@@ -1,0 +1,28 @@
+name: eval-gate
+on: [pull_request]
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取仓库代码
+        uses: actions/checkout@v4
+
+      - name: 安装Python依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml langfuse jq
+
+      - name: 运行评估脚本，生成report.json
+        run: python eval_runner.py --dataset golden_100.yaml
+
+      - name: 读取主分支基线分数，对比新版本，禁止效果退化
+        run: |
+          main_score=$(cat baseline_main_score.txt)
+          new_score=$(jq .avg_score report.json)
+          echo "主分支基线分数 = $main_score"
+          echo "本次新版本分数 = $new_score"
+          if (( $(echo "$new_score < $main_score" | bc -l) )); then
+            echo "❌ 新版本分数低于主基线，性能退化，拦截合并！"
+            exit 1
+          fi
